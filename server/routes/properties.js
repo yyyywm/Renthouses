@@ -1,9 +1,13 @@
 import express from 'express'
 import db from '../database.js'
+import { authMiddleware } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// 获取所有房源（带租客信息）
+// 所有路由都需要登录
+router.use(authMiddleware)
+
+// 获取所有房源（带租客信息，只返回当前用户的）
 router.get('/', (req, res) => {
   try {
     const properties = db.prepare(`
@@ -13,8 +17,9 @@ router.get('/', (req, res) => {
       FROM properties p
       LEFT JOIN contracts c ON p.id = c.property_id AND c.status = '生效'
       LEFT JOIN tenants t ON c.tenant_id = t.id
+      WHERE p.user_id = ?
       ORDER BY p.created_at DESC
-    `).all()
+    `).all(req.user.id)
     res.json({ code: 0, data: properties })
   } catch (err) {
     res.status(500).json({ code: 1, message: err.message })
@@ -24,7 +29,7 @@ router.get('/', (req, res) => {
 // 获取单个房源
 router.get('/:id', (req, res) => {
   try {
-    const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id)
+    const property = db.prepare('SELECT * FROM properties WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
     if (!property) {
       return res.status(404).json({ code: 1, message: '房源不存在' })
     }
@@ -39,9 +44,9 @@ router.post('/', (req, res) => {
   try {
     const { name, address, type, status, monthly_rent, area, description } = req.body
     const result = db.prepare(`
-      INSERT INTO properties (name, address, type, status, monthly_rent, area, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(name, address, type, status, monthly_rent, area, description)
+      INSERT INTO properties (user_id, name, address, type, status, monthly_rent, area, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, name, address, type, status, monthly_rent, area, description)
 
     res.json({ code: 0, data: { id: result.lastInsertRowid }, message: '创建成功' })
   } catch (err) {
@@ -55,11 +60,11 @@ router.put('/:id', (req, res) => {
     const { name, address, type, status, monthly_rent, area, description } = req.body
     const result = db.prepare(`
       UPDATE properties SET name = ?, address = ?, type = ?, status = ?, monthly_rent = ?, area = ?, description = ?
-      WHERE id = ?
-    `).run(name, address, type, status, monthly_rent, area, description, req.params.id)
+      WHERE id = ? AND user_id = ?
+    `).run(name, address, type, status, monthly_rent, area, description, req.params.id, req.user.id)
 
     if (result.changes === 0) {
-      return res.status(404).json({ code: 1, message: '房源不存在' })
+      return res.status(404).json({ code: 1, message: '房源不存在或无权限' })
     }
     res.json({ code: 0, message: '更新成功' })
   } catch (err) {
@@ -70,9 +75,9 @@ router.put('/:id', (req, res) => {
 // 删除房源
 router.delete('/:id', (req, res) => {
   try {
-    const result = db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id)
+    const result = db.prepare('DELETE FROM properties WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id)
     if (result.changes === 0) {
-      return res.status(404).json({ code: 1, message: '房源不存在' })
+      return res.status(404).json({ code: 1, message: '房源不存在或无权限' })
     }
     res.json({ code: 0, message: '删除成功' })
   } catch (err) {

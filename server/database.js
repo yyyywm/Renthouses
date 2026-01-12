@@ -24,6 +24,7 @@ export function initDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS properties (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       address TEXT,
       type TEXT DEFAULT '整租',
@@ -31,7 +32,8 @@ export function initDatabase() {
       monthly_rent REAL DEFAULT 0,
       area REAL,
       description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `)
 
@@ -39,18 +41,21 @@ export function initDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tenants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       phone TEXT,
       id_card TEXT,
       emergency_contact TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `)
 
-  // 合同表（图片使用 BASE64 编码存储在 TEXT 字段中）
+  // 合同表
   db.exec(`
     CREATE TABLE IF NOT EXISTS contracts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       property_id INTEGER,
       tenant_id INTEGER,
       contract_image TEXT,
@@ -60,31 +65,37 @@ export function initDatabase() {
       deposit REAL,
       status TEXT DEFAULT '生效',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (property_id) REFERENCES properties(id),
       FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     )
   `)
 
-  // 如果需要添加新字段（对于已有数据库）
-  try {
-    db.prepare("ALTER TABLE contracts ADD COLUMN contract_image TEXT").run()
-  } catch (e) {
-    // 字段已存在，忽略错误
-  }
-
   // 租金记录表
   db.exec(`
     CREATE TABLE IF NOT EXISTS rent_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       contract_id INTEGER,
       amount REAL,
       pay_date DATE,
       status TEXT DEFAULT '已支付',
       remark TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (contract_id) REFERENCES contracts(id)
     )
   `)
+
+  // 为已有数据库添加 user_id 字段
+  const tables = ['properties', 'tenants', 'contracts', 'rent_records']
+  for (const table of tables) {
+    try {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN user_id INTEGER`).run()
+    } catch (e) {
+      // 字段已存在，忽略
+    }
+  }
 
   console.log('Database initialized successfully')
 }
